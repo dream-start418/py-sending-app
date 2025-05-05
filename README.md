@@ -1,2 +1,2 @@
-# py-sending-app
-py-sending-app  for Robosell
+# robosell_sedding_app
+Robosell sending app with python
