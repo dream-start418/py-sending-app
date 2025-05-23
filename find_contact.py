@@ -61,7 +61,7 @@ class FindContact:
                 for form in soup.find_all('form'):
                     form_text = form.get_text()
                     if any(keyword in form_text for keyword in keywords):
-                        input_fields = form.find_all('input')
+                        input_fields = form.find_all('input') + form.find_all('textarea')
                         if input_fields:
                             target_form = form
                             break
@@ -82,7 +82,7 @@ class FindContact:
     def extract_input_labels(self, form):
         input_labels = {}
 
-        input_fields = form.find_all('input', type=lambda x: x and x.lower() in self.ALLOWED_INPUT_TYPES)
+        input_fields = form.find_all('input', type=lambda x: x and x.lower() in self.ALLOWED_INPUT_TYPES)+ form.find_all('textarea')
 
         for input_field in input_fields:
             if input_field.find_parents(['select', 'option']):

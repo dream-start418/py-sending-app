@@ -722,7 +722,7 @@ class List_item(tk.Frame):
             if contact_form != {}:
                 send_process = send_contact.SendContact()
                 send_data = send_process.send_data(
-                    contact_page_url, contact_form, profile_data
+                    contact_page_url, contact_form, profile_data, 0, auto_contact.api_key
                 )
                 if send_data == "success":
                     result = "自動送信【成功】"

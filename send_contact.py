@@ -8,6 +8,9 @@ from bs4 import BeautifulSoup
 from webdriver_manager.chrome import ChromeDriverManager
 import logging
 import time
+import requests
+import json
+from urllib.parse import urlparse
 
 class SendContact:
     def __init__(self):
@@ -82,14 +85,13 @@ class SendContact:
     def is_submission_successful(self):
         page_html_after_submit = self.driver.page_source
         soup_after_submit = BeautifulSoup(page_html_after_submit, 'html.parser')
-        success_message = soup_after_submit.find(string="送信されました") or soup_after_submit.find(string="成功しました")
+        success_message = soup_after_submit.find(string="送信されました") or soup_after_submit.find(string="成功しました") or soup_after_submit.find(string="successful") or soup_after_submit.find(string="contacting us") or soup_after_submit.find(string="お問い合わせありがとうございました") or soup_after_submit.find(string="メッセージは送信されました") or soup_after_submit.find(string="has been sent") or soup_after_submit.find(string="お問い合わせをいただきまして誠にありがとうございました") or soup_after_submit.find(string="ありがとうございました")
         if success_message:
             return True
         return False
 
     
     def click_submit_button(self, form, check_name, check_type, url):
-        # print(check_name, "=> ", check_type)
         send_result = 'failure'
         submit_button_xpath = "//button[@type='submit'] | //input[@type='submit']"
 
@@ -113,7 +115,87 @@ class SendContact:
                 send_result = 'success'
             else:
                 send_result = 'failure'
+        
+            if self.is_submission_successful():
+                return 'success'
+            else:
+                return 'failure'
 
+        except Exception as e:
+            self.logger.error(f"Error clicking the submit button: {e}")
+
+        return send_result
+    
+    def click_submit_button_first_check(self, form, check_name, check_type, url):
+        send_result = 'failure'
+        submit_button_xpath = "//button[@type='submit'] | //input[@type='submit']"
+
+        try:
+            elements = WebDriverWait(self.driver, 20).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[type="submit"], button[type="submit"]'))
+            )
+            time.sleep(20)
+            elements[0].click()
+            time.sleep(5)
+            if "global-coms.biz/contact_us" in url:
+                print("intarget")
+                print(url)
+                send_result = 'success'
+            elif "dx-lab.biz/contact" in url:
+                sub_elements = WebDriverWait(self.driver, 20).until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[type="submit"], button[type="submit"]'))
+                )
+                time.sleep(20)
+                sub_elements[0].click()
+                send_result = 'success'
+            else:
+                send_result = 'failure'
+            page_html_after_submit = self.driver.page_source
+            if send_result == 'failure':
+                soup_after_submit = BeautifulSoup(page_html_after_submit, 'html.parser')
+                check_state_exists = soup_after_submit.find('input', {'name': check_name, 'type': check_type}) is not None
+                check_change_exists = soup_after_submit.find('input', {'name': check_name, 'type': 'hidden'}) is not None
+                if check_state_exists:
+                    send_result = 'failure'
+                elif check_change_exists:
+                    submit_button_xpath = "//button[@type='submit'] | //input[@type='submit']"
+                    if self.is_submission_successful():
+                        return 'success'
+
+                    try:
+                        wait = WebDriverWait(self.driver, 20)
+                        submit_button = wait.until(
+                            EC.element_to_be_clickable((By.XPATH, submit_button_xpath))
+                        )
+                        submit_button.click()
+                        time.sleep(20)
+                        page_html_after_submit = self.driver.page_source
+                        soup_after_submit = BeautifulSoup(page_html_after_submit, 'html.parser')
+                        check_state_exists = soup_after_submit.find('input', {'name': check_name}) is not None
+                        send_result = 'success' if not check_state_exists else 'failure'
+                    except Exception as e:
+                        self.logger.error(f"Error clicking the resubmit button: {e}")
+
+                else:
+                    send_result = 'success'
+
+        except Exception as e:
+            self.logger.error(f"Error clicking the submit button: {e}")
+
+        return send_result
+    
+    def click_submit_button_recheck(self, form, check_name, check_type, url):
+        send_result = 'failure'
+        submit_button_xpath = "//button[@type='submit'] | //input[@type='submit']"
+
+        try:
+            elements = WebDriverWait(self.driver, 20).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[type="submit"], button[type="submit"]'))
+            )
+            time.sleep(20)
+            elements[0].click()
+            time.sleep(5)
+            page_html_after_submit = self.driver.page_source
             if send_result == 'failure':
                 soup_after_submit = BeautifulSoup(page_html_after_submit, 'html.parser')
                 check_state_exists = soup_after_submit.find('input', {'name': check_name, 'type': check_type}) is not None
@@ -147,7 +229,8 @@ class SendContact:
 
         return send_result
 
-    def send_data(self, url, contact_form, profile_data):
+    def send_data(self, url, contact_form, profile_data, retry_count=0, api_key=None):
+        MAX_RETRIES = 1
         try:
             self.driver.maximize_window()
             self.driver.get(url)
@@ -290,14 +373,104 @@ class SendContact:
                             self.wait_and_fill_input(By.NAME, key_value.get('name'), profile_data['市区町村'])
 
                 self.select_option_in_form(target_form, profile_data['都道府県'])
-                self.select_check_radio_in_form(target_form)
                 self.wait_and_fill_textarea(target_form, profile_data['お問い合わせ詳細'])
-
+                self.select_check_radio_in_form(target_form)
                 send_result = self.click_submit_button(target_form, check_name, check_type, url)
+                if send_result != 'success':
+                    if retry_count < MAX_RETRIES:
+                        parsed_url = urlparse(url)
+                        domain = parsed_url.netloc
+                        if ':' in domain:
+                            domain = domain.split(':')[0]
+                        data = {
+                                'api_key': api_key,
+                                'url': domain,
+                            }
+                        try:
+                            # Make API call
+                            api_url = "https://autofill.robosell.jp/api/get_url_data"
+
+                            response = requests.get(
+                                url=api_url,
+                                params=data
+                            )
+                            if response.status_code == 200:
+                                new_data = response.json()
+                                if new_data:
+                                    element_pairs = json.loads(new_data['data']['element_pairs'])
+                                    content = new_data['data']['content']
+                                    input_to_modal = {pair['inputField']: pair['modalButton'] for pair in element_pairs}
+
+                                    # Then modify the form filling logic
+                                    for key, key_values in contact_form.items():
+                                        key_value = key_values[0]
+                                        form_field_name = key_value['name']
+                                        
+                                        # Check if this form field name exists in our new data mapping
+                                        if form_field_name in input_to_modal:
+                                            modal_button = input_to_modal[form_field_name]
+                                            
+                                            # Map modal_button to the correct profile_data key
+                                            profile_key = {
+                                                # Company related
+                                                'company': '会社名',
+                                                'company_hira': '会社名（ヨミ）',
+                                                
+                                                # Name related
+                                                'last_name': '姓',
+                                                'first_name': '名',
+                                                'full_name': '姓名',
+                                                'last_hira': '姓（ヨミ）',
+                                                'first_hira': '名（ヨミ）',
+                                                'full_hira': '姓名（ヨミ）',
+                                                
+                                                # Department and position
+                                                'department': '部署名',
+                                                'business': '業種・業界',
+                                                'job': '役職名',
+                                                'service_fee': '役費',
+                                                
+                                                # Address related
+                                                'post': '郵便番号',
+                                                'post1': '郵便番号1',
+                                                'post2': '郵便番号2',
+                                                'address': '都道府県',
+                                                'full_address': '住所',
+                                                'city': '市区町村',
+                                                'street': '町域・番地',
+                                                'building': '建物名',
+                                                
+                                                # Contact information
+                                                'tel': '電話番号',
+                                                'tel1': '電話番号1',
+                                                'tel2': '電話番号2',
+                                                'tel3': '電話番号3',
+                                                'email': 'メールアドレス',
+                                                'website': 'Webサイト',
+                                                
+                                                # Other
+                                                'employee': '従業員数',
+                                                'content': 'お問い合わせ詳細',
+                                                'memo': 'メモ'
+                                            }.get(modal_button)
+                                            
+                                            if profile_key and profile_key in profile_data:
+                                                self.wait_and_fill_input(By.NAME, form_field_name, profile_data[profile_key])
+                                    
+                                    self.select_option_in_form(target_form, profile_data['都道府県'])
+                                    self.wait_and_fill_textarea(target_form, profile_data['お問い合わせ詳細'])
+                                    self.select_check_radio_in_form(target_form)  
+                                    if content == '2次確認ボタンの出現':
+                                        send_result = self.click_submit_button_recheck(target_form, check_name, check_type, url)
+                                    else:
+                                        send_result = self.click_submit_button_first_check(target_form, check_name, check_type, url)     
+                        except Exception as api_error:
+                            self.logger.error(f"API call failed: {api_error}")
 
             else:
                 self.logger.warning("No matching form found on the page")
                 send_result = 'failure'
+            return send_result
 
         except Exception as e:
             self.logger.error(f"An error occurred: {e}")
@@ -305,9 +478,8 @@ class SendContact:
             pass
 
         finally:
-            # time.sleep(60)
             self.driver.quit()
-            # print("one session end")
+
 
         return send_result
 
