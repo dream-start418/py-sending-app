@@ -24,7 +24,7 @@ import find_contact
 import send_contact
 
 api_url = "https://autofill.robosell.jp/"
-version = 4.6
+version = 4.7
 
 
 def set_regidit_key(value):
@@ -745,7 +745,7 @@ class List_item(tk.Frame):
         now_time = datetime.datetime.now()
 
         url = api_url + "api/send_result"
-        parts = profile_data["お問い合わせ詳細"].splitlines()  # Split string into lines
+        parts = profile_data["お問い合わせ詳細"].splitlines()  # Split string into lines.....
         encoded_parts = []
 
         for part in parts:
