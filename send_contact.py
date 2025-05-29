@@ -96,25 +96,13 @@ class SendContact:
         submit_button_xpath = "//button[@type='submit'] | //input[@type='submit']"
 
         try:
-            elements = WebDriverWait(self.driver, 20).until(
-                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[type="submit"], button[type="submit"]'))
+            wait = WebDriverWait(self.driver, 20)
+            submit_button = wait.until(
+                EC.element_to_be_clickable((By.XPATH, submit_button_xpath))
             )
             time.sleep(20)
-            elements[0].click()
+            submit_button.click()
             time.sleep(5)
-            if "global-coms.biz/contact_us" in url:
-                print("intarget")
-                print(url)
-                send_result = 'success'
-            elif "dx-lab.biz/contact" in url:
-                sub_elements = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[type="submit"], button[type="submit"]'))
-                )
-                time.sleep(20)
-                sub_elements[0].click()
-                send_result = 'success'
-            else:
-                send_result = 'failure'
         
             if self.is_submission_successful():
                 return 'success'
