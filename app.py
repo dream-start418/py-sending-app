@@ -24,7 +24,7 @@ import find_contact
 import send_contact
 
 api_url = "https://autofill.robosell.jp/"
-version = 4.7
+version = 4.14
 
 
 def set_regidit_key(value):
@@ -77,6 +77,8 @@ class Auto_contact(tk.Tk):
             relief="raised",
         )
         self.mana_id = ""
+        self.mana_id_list = []  # List to store multiple mana IDs
+        self.current_mana_index = 0  # Index of currently processing list
         self.info_data = ""
         self.url_item_array = []
         self.api_key = ""
@@ -84,8 +86,11 @@ class Auto_contact(tk.Tk):
         self.user_data = ""
         self.start_time = ""
         self.end_time = ""
+        self.is_processing = False  # Flag to track processing state
+        self.is_paused = False  # Flag to track pause state
+        
         # Set window size and padding
-        self.geometry("570x550")
+        self.geometry("570x600")
         self.configure(padx=20, pady=20)
         icon_path = resource_path("icon1.ico")
         self.iconbitmap(icon_path)
@@ -100,6 +105,7 @@ class Auto_contact(tk.Tk):
         self.rowconfigure(3, pad=20)
         self.rowconfigure(4, pad=20)
         self.rowconfigure(5, pad=20)
+        self.rowconfigure(6, pad=20)
         self.columnconfigure(0, pad=20)
         self.columnconfigure(1, pad=36)
         self.columnconfigure(2, pad=20)
@@ -126,7 +132,7 @@ class Auto_contact(tk.Tk):
         # Create an Edit menu
         self.edit_menu = tk.Menu(self.menubar, tearoff=0)
         self.edit_menu.add_command(
-            label="開始 (A)", font=("MS Gothic", 9), command=self.start_work
+            label="開始 (A)", font=("MS Gothic", 9), command=self.toggle_process
         )
         self.edit_menu.add_command(
             label="停止 (P)", font=("MS Gothic", 9), command=self.stop_work
@@ -147,7 +153,7 @@ class Auto_contact(tk.Tk):
         # create hotkey
         self.bind("<Control-Key-o>", self.open_csv_file)
         self.bind("<Control-Key-s>", self.save_csv)
-        self.bind("<Control-Key-a>", self.start_work)
+        self.bind("<Control-Key-a>", self.toggle_process)
         self.bind("<Control-Key-p>", self.stop_work)
 
         # Configure the self window to use the self.menubar
@@ -172,6 +178,7 @@ class Auto_contact(tk.Tk):
             text="リストID登録",
             command=self.open_mana_frame,
             style="Custom.TButton",
+            state=tk.DISABLED  # Initially disabled
         )
         self.register_mana_btn.grid(row=1, column=0)
 
@@ -180,33 +187,21 @@ class Auto_contact(tk.Tk):
         )
         self.mana_id_txt.grid(row=1, column=1, sticky="nw", columnspan=3) 
 
-        self.open_button = ttk.Button(
+        # Single button for 顧客データ取得, 開始, 停止, 再開
+        self.process_btn = ttk.Button(
             self,
             text="顧客データ取得",
-            command=self.open_csv_file,
+            command=self.toggle_process,
             style="Custom.TButton",
+            state=tk.DISABLED  # Initially disabled
         )
-        self.open_button.grid(row=2, column=0)
+        self.process_btn.grid(row=2, column=0)
 
-        # self.mana_id_label = tk.Label(
-        #     self, text="リストID:", justify="left", anchor="nw", font=("Yu Mincho", 10)
-        # )
-
-        # self.mana_id_label.grid(row=2, column=1, sticky="nw", columnspan=3)
-
-        # self.mana_id_input =  tk.Entry(self, font=("Yu Mincho", 12), width=8)
-        # self.mana_id_input.grid(row=2, column=2)
-
-        # Create buttons for the second row
-        self.start_btn = ttk.Button(
-            self, text="開始", command=self.start_work, style="Custom.TButton"
+        # Current processing list display
+        self.current_list_txt = tk.Label(
+            self, text="進行中リスト：", justify="left", anchor="nw", font=("Yu Mincho", 10)
         )
-        self.start_btn.grid(row=2, column=3)
-
-        self.top_btn = ttk.Button(
-            self, text="停止", command=self.stop_work, style="Custom.TButton"
-        )
-        self.top_btn.grid(row=2, column=4)
+        self.current_list_txt.grid(row=2, column=1, sticky="nw", columnspan=3)
 
         # Create StringVar objects
         self.current_value_var = tk.StringVar(self)
@@ -285,7 +280,7 @@ class Auto_contact(tk.Tk):
         self.save_btn = ttk.Button(
             self, text="閉じる", command=self.quit_action, style="Custom.TButton"
         )
-        self.save_btn.grid(row=5, column=3)
+        self.save_btn.grid(row=6, column=3)
 
     def quit_action(self):
         if self.url_count != 0:
@@ -299,6 +294,15 @@ class Auto_contact(tk.Tk):
         self.quit()
 
     def open_csv_file(self, event=None):
+        if not self.mana_id_list:
+            messagebox.showinfo("エラー", "リストIDが登録されていません。")
+            return
+            
+        # Process the first list in the queue
+        if self.current_mana_index < len(self.mana_id_list):
+            self.mana_id = self.mana_id_list[self.current_mana_index]
+            self.current_list_txt.config(text=f"進行中リスト：{self.mana_id}")
+            
         url = api_url + "api/get_info_data"
         data = {"api_key": self.api_key, "domain": "test", "mana_id": self.mana_id}
         # print(data)
@@ -356,6 +360,15 @@ class Auto_contact(tk.Tk):
         mana_register_frame = Register_mana(self, new_window)
         mana_register_frame.grid(row=0, column=0)
 
+    def toggle_process(self, event=None):
+        if not self.is_processing:
+            self.start_work()
+        else:
+            if self.is_paused:
+                self.resume_work()
+            else:
+                self.pause_work()
+
     def start_work(self, event=None):
         if self.api_key == "":
             show_msg = (
@@ -363,12 +376,19 @@ class Auto_contact(tk.Tk):
             )
             messagebox.showinfo("警告", show_msg)
             return
-        if self.mana_id == "":
+        if not self.mana_id_list:
             show_msg = (
                 """リストIDがありません。リストIDを入力して続行してください。"""
             )
             messagebox.showinfo("警告", show_msg)
             return
+            
+        # If no data loaded yet, load it first
+        if not self.url_item_array:
+            self.open_csv_file()
+            if not self.url_item_array:
+                return
+                
         url = api_url + "api/get_contact_data"
         data = {"api_key": self.api_key, "domain": "test", "mana_id": self.mana_id}
         plan_type = ""
@@ -398,17 +418,27 @@ class Auto_contact(tk.Tk):
                     start_flg = True
 
         if self.api_key != "" and start_flg:
-            self.start_btn.config(text="再開")
-            self.start_btn.config(state=tk.DISABLED)
+            self.process_btn.config(text="停止")
+            self.is_processing = True
+            self.is_paused = False
             self.alarmtxt.place(relx=0.05, rely=0.8)
             self.start_thread = threading.Thread(target=self.start_process)
             self.start_thread.start()
-            self.start_btn.config(state=tk.NORMAL)
             self.save_btn.configure(state=tk.DISABLED)
 
-    def start_process(self):
+    def pause_work(self):
+        self.process_btn.config(text="再開")
+        self.is_paused = True
         for item in self.url_item_array:
-            item.start_process()
+            if hasattr(item, 'pause_process'):
+                item.pause_process()
+
+    def resume_work(self):
+        self.process_btn.config(text="停止")
+        self.is_paused = False
+        for item in self.url_item_array:
+            if hasattr(item, 'resume_process'):
+                item.resume_process()
 
     def start_process(self):
         chunk_size = 5
@@ -418,11 +448,15 @@ class Auto_contact(tk.Tk):
 
         threads = []
         for i in range(num_chunks):
+            if self.is_paused:
+                break
             start_index = i * chunk_size
             end_index = (i + 1) * chunk_size
             chunk_items = self.url_item_array[start_index:end_index]
 
             for item in chunk_items:
+                if self.is_paused:
+                    break
                 thread = threading.Thread(target=item.process)
                 thread.start()
                 threads.append(thread)
@@ -430,19 +464,51 @@ class Auto_contact(tk.Tk):
 
         for thread in threads:
             thread.join()
+            
+        # Check if all lists are processed
+        self.current_mana_index += 1
+        if self.current_mana_index < len(self.mana_id_list):
+            # Move to next list
+            self.process_next_list()
+        else:
+            # All lists processed
+            self.finish_processing()
+
+    def process_next_list(self):
+        # Clear current data
+        self.url_item_array = []
+        for widget in self.inner_frame.winfo_children():
+            widget.destroy()
+        
+        # Load next list
+        self.open_csv_file()
+        if self.url_item_array:
+            self.start_process()
+
+    def finish_processing(self):
+        self.is_processing = False
+        self.is_paused = False
+        self.process_btn.config(text="顧客データ取得")
+        self.process_btn.config(state=tk.DISABLED)
+        self.save_btn.config(state=tk.NORMAL)
+        self.current_list_txt.config(text="進行中リスト：完了")
 
     def stop_work(self, event=None):
         self.stop_thread = threading.Thread(target=self.stop_process)
         self.stop_thread.start()
 
     def stop_process(self):
-        self.top_btn.config(state=tk.DISABLED)
+        self.process_btn.config(state=tk.DISABLED)
+        self.is_processing = False
+        self.is_paused = False
         for item in self.url_item_array:
             item.stop_process()
             if item.state_txt.cget("text") == "進行中":
                 item.state_txt.config(text="停止")
 
-        self.top_btn.config(state=tk.NORMAL)
+        self.process_btn.config(text="顧客データ取得")
+        self.process_btn.config(state=tk.NORMAL)
+        self.save_btn.config(state=tk.NORMAL)
 
     def save_csv(self, event=None):
         csv_data = pd.DataFrame(
@@ -527,6 +593,8 @@ class Register_api(tk.Frame):
             auto_contact.chat_api_key = chat_api_key
             auto_contact.start_time = response.json()["start_time"]
             auto_contact.end_time = response.json()["end_time"]
+            # Enable the list ID registration button
+            auto_contact.register_mana_btn.config(state=tk.NORMAL)
             self.close_frame()
 
         elif response.status_code == 401:
@@ -534,9 +602,7 @@ class Register_api(tk.Frame):
         elif response.status_code == 505:
             messagebox.showerror("お知らせ", response.json()["message"])
             auto_contact.register_api_btn.config(state=tk.DISABLED)
-            auto_contact.open_button.config(state=tk.DISABLED)
-            auto_contact.start_btn.config(state=tk.DISABLED)
-            auto_contact.top_btn.config(state=tk.DISABLED)
+            auto_contact.process_btn.config(state=tk.DISABLED)
             auto_contact.save_btn.config(state=tk.DISABLED)
         else:
             messagebox.showerror("お知らせ", "サーバーから応答がありません。")
@@ -595,7 +661,7 @@ class Register_mana(tk.Frame):
 
         self.mana_id = tk.Entry(self.frame, font=("Yu Mincho", 12), width=28)
         self.mana_id.grid(row=1, column=1)
-        self.mana_id.insert(0, "リストIDを貼り付けてください")
+        self.mana_id.insert(0, "リストIDを貼り付けてください（複数はカンマ区切り）")
         self.mana_id.focus()
 
         self.close_button = ttk.Button(
@@ -615,22 +681,34 @@ class Register_mana(tk.Frame):
 
     def register_mana_key(self):
         url = api_url + "api/get_mana_data"
-        mana_id = self.mana_id.get()
-        data = {"mana_id": mana_id, "version": version, "domain": "test"}
-
-        response = requests.get(url, params=data)
-        if response.status_code == 200:
-            messagebox.showinfo("お知らせ", "リストIDが正確に登録されました。")
-            auto_contact.mana_id = self.mana_id.get()
-            auto_contact.mana_id_txt.config(text="リストID:" + mana_id)
+        mana_id_input = self.mana_id.get()
+        
+        # Split by comma and clean up
+        mana_id_list = [id.strip() for id in mana_id_input.split(',') if id.strip()]
+        
+        if not mana_id_list:
+            messagebox.showerror("エラー", "有効なリストIDを入力してください。")
+            return
+            
+        # Validate each mana_id
+        valid_mana_ids = []
+        for mana_id in mana_id_list:
+            data = {"mana_id": mana_id, "version": version, "domain": "test"}
+            response = requests.get(url, params=data)
+            if response.status_code == 200:
+                valid_mana_ids.append(mana_id)
+            else:
+                messagebox.showerror("エラー", f"リストID '{mana_id}' が無効です: {response.json().get('message', 'Unknown error')}")
+                return
+        
+        if valid_mana_ids:
+            messagebox.showinfo("お知らせ", f"{len(valid_mana_ids)}個のリストIDが正確に登録されました。")
+            auto_contact.mana_id_list = valid_mana_ids
+            auto_contact.current_mana_index = 0
+            auto_contact.mana_id_txt.config(text=f"リストID: {', '.join(valid_mana_ids)}")
+            # Enable the process button
+            auto_contact.process_btn.config(state=tk.NORMAL)
             self.close_frame()
-
-        elif response.status_code == 401:
-            messagebox.showerror("お知らせ", response.json()["message"])
-        elif response.status_code == 505:
-            messagebox.showerror("お知らせ", response.json()["message"])
-        else:
-            messagebox.showerror("お知らせ", "サーバーから応答がありません。")
 
     def on_drag_start(self, event):
         self.frame.startX = event.x
@@ -656,6 +734,7 @@ class List_item(tk.Frame):
         self.configure(pady=3)
 
         self.search_data = None
+        self.is_paused = False
 
         # Create label fields in the small frame group
         self.id_txt = tk.Label(
@@ -685,6 +764,9 @@ class List_item(tk.Frame):
         self.error_label.grid(row=0, column=3)
 
     def process(self):
+        while self.is_paused:
+            time.sleep(0.1)
+            
         domain = self.data.iloc[2]
         protocol = domain.split("://")[0]
         domain = domain.split("://")[1]
@@ -709,7 +791,7 @@ class List_item(tk.Frame):
             self.error_array.append({"field": "API", "msg": "No found APIKey"})
             result = "自動送信【失敗】"
         elif "type" in response.json() and response.json()["type"] == "noForm":
-            result = "フォーム無し"
+            result = "フォーム未発見"
         else:
             result = "自動送信【失敗】"
             contact_finder = find_contact.FindContact()
@@ -736,8 +818,7 @@ class List_item(tk.Frame):
         )
 
         if auto_contact.url_count < 1:
-            auto_contact.start_btn.config(state=tk.DISABLED)
-            auto_contact.top_btn.config(state=tk.DISABLED)
+            auto_contact.process_btn.config(state=tk.DISABLED)
             auto_contact.save_btn.config(state=tk.DISABLED)
             # print("--------- end ---------")
 
@@ -787,6 +868,12 @@ class List_item(tk.Frame):
         self.process_thread = threading.Thread(target=self.process)
         self.process_thread.start()
 
+    def pause_process(self):
+        self.is_paused = True
+
+    def resume_process(self):
+        self.is_paused = False
+
     def send_error(self):
         domain = self.data.iloc[1]
         domain = domain.split("://")[1]
@@ -809,13 +896,18 @@ class List_item(tk.Frame):
         response = requests.get(url, params=req)
 
     def stop_process(self):
-        self.process_thread.join()
-        self.driver.quit()
-        del self.process_thread
+        self.is_paused = True
+        if hasattr(self, 'process_thread'):
+            self.process_thread.join()
+        if hasattr(self, 'driver'):
+            self.driver.quit()
+        if hasattr(self, 'process_thread'):
+            del self.process_thread
 
     def __del__(self):
-        self.process_thread.join()
-        del self.process_thread
+        if hasattr(self, 'process_thread'):
+            self.process_thread.join()
+            del self.process_thread
 
 
 if __name__ == "__main__":
