@@ -8,6 +8,8 @@ import time
 import urllib.parse
 import winreg as wrg
 import requests
+import atexit
+import uuid
 
 # Third-party library imports
 import pandas as pd
@@ -80,6 +82,7 @@ class Auto_contact(tk.Tk):
         self.mana_id_list = []  # List to store multiple mana IDs
         self.current_mana_index = 0  # Index of currently processing list
         self.info_data = ""
+        self.all_lists_data = []  # Store all lists data
         self.url_item_array = []
         self.api_key = ""
         self.chat_api_key = ""
@@ -282,6 +285,25 @@ class Auto_contact(tk.Tk):
         )
         self.save_btn.grid(row=6, column=3)
 
+        self.device_id = str(uuid.uuid4())
+        self.api_key = None
+        
+        # Register cleanup function to run when app closes
+        atexit.register(self.cleanup_on_exit)
+        
+        # Set up window close handler
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        # Add these new attributes for list tracking
+        self.list_item_counts = []  # Store item count for each list
+        self.list_cumulative_counts = []  # Store cumulative counts for each list
+        self.list_mana_ids = []  # Store mana IDs in order
+
+    def on_closing(self):
+        """Handle window close event"""
+        self.cleanup_on_exit()
+        self.destroy()
+
     def quit_action(self):
         if self.url_count != 0:
             show_msg = """
@@ -293,43 +315,96 @@ class Auto_contact(tk.Tk):
             return
         self.quit()
 
-    def open_csv_file(self, event=None):
+    def fetch_all_lists_data(self):
+        """Fetch data from all lists and combine them"""
         if not self.mana_id_list:
             messagebox.showinfo("エラー", "リストIDが登録されていません。")
-            return
+            return False
             
-        # Process the first list in the queue
-        if self.current_mana_index < len(self.mana_id_list):
-            self.mana_id = self.mana_id_list[self.current_mana_index]
-            self.current_list_txt.config(text=f"進行中リスト：{self.mana_id}")
+        self.all_lists_data = []
+        self.list_item_counts = []
+        self.list_cumulative_counts = []
+        self.list_mana_ids = []
+        total_items = 0
+        
+        # Show loading message
+        self.current_list_txt.config(text="顧客データ数の読み込み中...")
+        self.update_idletasks()
+        
+        for i, mana_id in enumerate(self.mana_id_list):
+            # Show current list being fetched
+            self.current_list_txt.config(text=f"顧客データ数の読み込み中... ({mana_id})")
+            self.update_idletasks()
             
-        url = api_url + "api/get_info_data"
-        data = {"api_key": self.api_key, "domain": "test", "mana_id": self.mana_id}
-        # print(data)
-        request = requests.Request('GET', url, params=data).prepare()
-        # print(request.url)
-        response = requests.get(url, params=data)
-        if response.status_code == 200:
+            url = api_url + "api/get_info_data"
+            data = {"api_key": self.api_key, "domain": "test", "mana_id": mana_id}
+            
             try:
-                raw_data = response.json().get("info_data", [])
-                if not raw_data:
-                    raise ValueError("No 'info_data' found in response.")
-                self.info_data = pd.DataFrame(raw_data)
+                response = requests.get(url, params=data)
+                if response.status_code == 200:
+                    raw_data = response.json().get("info_data", [])
+                    if raw_data:
+                        # Add mana_id to each record for tracking
+                        for record in raw_data:
+                            record['source_mana_id'] = mana_id
+                        self.all_lists_data.extend(raw_data)
+                        
+                        # Track item counts for each list
+                        list_count = len(raw_data)
+                        self.list_item_counts.append(list_count)
+                        self.list_mana_ids.append(mana_id)
+                        
+                        total_items += list_count
+                        print(f"Fetched {list_count} items from {mana_id}")
+                    else:
+                        print(f"No data found for {mana_id}")
+                        self.list_item_counts.append(0)
+                        self.list_mana_ids.append(mana_id)
+                else:
+                    print(f"Error fetching data for {mana_id}: {response.status_code}")
+                    if response.status_code == 402:
+                        messagebox.showinfo("エラー", f"送信済みリストです: {mana_id}")
+                        return False
+                    self.list_item_counts.append(0)
+                    self.list_mana_ids.append(mana_id)
             except Exception as e:
-                messagebox.showinfo("エラー", f"データの読み込みに失敗しました: {e}")
-                return
-        else:
-            if response.status_code == 402:
-                messagebox.showinfo("エラー", f"送信済みリストです。システムの実行ができません。")
-                return
-            else:
-                messagebox.showinfo("エラー", f"APIリクエストに失敗しました: {response.status_code}")
-                return
-        # Validate the number of items
-        if len(self.info_data) > 500:
+                print(f"Exception fetching data for {mana_id}: {e}")
+                messagebox.showinfo("エラー", f"データの読み込みに失敗しました: {mana_id} - {e}")
+                return False
+        
+        # Calculate cumulative counts
+        cumulative = 0
+        for count in self.list_item_counts:
+            self.list_cumulative_counts.append(cumulative)
+            cumulative += count
+        
+        if not self.all_lists_data:
+            messagebox.showinfo("エラー", "すべてのリストからデータを取得できませんでした。")
+            return False
+            
+        # Validate total number of items
+        if total_items > 500:
             messagebox.showinfo("警告", "一度に登録できる件数は最大500です。")
-            return
+            return False
+            
+        print(f"Total items fetched: {total_items} from {len(self.mana_id_list)} lists")
+        print(f"List counts: {self.list_item_counts}")
+        print(f"Cumulative counts: {self.list_cumulative_counts}")
+        return True
 
+    def open_csv_file(self, event=None):
+        """Load and display all lists data"""
+        if not self.fetch_all_lists_data():
+            return
+            
+        # Convert to DataFrame
+        self.info_data = pd.DataFrame(self.all_lists_data)
+        
+        # Clear existing items
+        self.url_item_array = []
+        for widget in self.inner_frame.winfo_children():
+            widget.destroy()
+        
         # Process and display the items
         for i in range(len(self.info_data)):
             item_data = self.info_data.iloc[i]
@@ -341,8 +416,27 @@ class Auto_contact(tk.Tk):
             self.url_item_array.append(list_item)
             list_item.grid(row=i, column=0, columnspan=4, sticky="nw")
 
-        # Optionally update progress
+        # Update progress
         update_progress(0, len(self.url_item_array), self)
+        
+        # Update display
+        self.current_list_txt.config(text=f"全リスト統合済み：{len(self.mana_id_list)}リスト")
+
+    def get_current_list_id(self, current_progress):
+        """Get the current list ID based on progress count"""
+        for i, cumulative in enumerate(self.list_cumulative_counts):
+            if i == len(self.list_cumulative_counts) - 1:
+                # Last list - check if we're within its range
+                if current_progress >= cumulative:
+                    return self.list_mana_ids[i]
+            else:
+                # Not last list - check if we're within its range
+                next_cumulative = self.list_cumulative_counts[i + 1]
+                if cumulative <= current_progress < next_cumulative:
+                    return self.list_mana_ids[i]
+        
+        # Fallback to first list
+        return self.list_mana_ids[0] if self.list_mana_ids else "Unknown"
 
     def open_api_frame(self):
         self.register_api_btn.config(
@@ -390,22 +484,18 @@ class Auto_contact(tk.Tk):
                 return
                 
         url = api_url + "api/get_contact_data"
-        data = {"api_key": self.api_key, "domain": "test", "mana_id": self.mana_id}
+        data = {"api_key": self.api_key, "domain": "test", "mana_id": self.mana_id_list[0]}  # Use first list for contact data
         plan_type = ""
         response = requests.get(url, params=data)
         if response.status_code == 200:
             self.start_time = response.json()["start_time"]
             self.end_time = response.json()["end_time"]
             plan_type = response.json()["plan_type"]
-            cur_mana_id = self.mana_id
-            # messagebox.showinfo("警告", response.json()["mana_info"])
 
         start_flg = True
 
         if plan_type == "無料プラン":
-
             for item in self.info_data["お問い合わせ詳細"]:
-
                 if ".doc1.jp/" not in item or str(item) == "":
                     start_flg = False
                     show_msg = """
@@ -441,6 +531,7 @@ class Auto_contact(tk.Tk):
                 item.resume_process()
 
     def start_process(self):
+        """Process all items from all lists sequentially"""
         chunk_size = 5
         self.url_count = len(self.url_item_array)
         self.total_url_cnt = len(self.url_item_array)
@@ -457,6 +548,12 @@ class Auto_contact(tk.Tk):
             for item in chunk_items:
                 if self.is_paused:
                     break
+                
+                # Calculate current progress and update display
+                current_progress = self.total_url_cnt - self.url_count
+                current_list_id = self.get_current_list_id(current_progress)
+                self.after(0, lambda mid=current_list_id: self.current_list_txt.config(text=f"進行中リスト: {mid}"))
+                
                 thread = threading.Thread(target=item.process)
                 thread.start()
                 threads.append(thread)
@@ -465,27 +562,11 @@ class Auto_contact(tk.Tk):
         for thread in threads:
             thread.join()
             
-        # Check if all lists are processed
-        self.current_mana_index += 1
-        if self.current_mana_index < len(self.mana_id_list):
-            # Move to next list
-            self.process_next_list()
-        else:
-            # All lists processed
-            self.finish_processing()
-
-    def process_next_list(self):
-        # Clear current data
-        self.url_item_array = []
-        for widget in self.inner_frame.winfo_children():
-            widget.destroy()
-        
-        # Load next list
-        self.open_csv_file()
-        if self.url_item_array:
-            self.start_process()
+        # All processing completed
+        self.after(100, self.finish_processing)
 
     def finish_processing(self):
+        """Finish processing all lists - called from main thread"""
         self.is_processing = False
         self.is_paused = False
         self.process_btn.config(text="顧客データ取得")
@@ -516,6 +597,20 @@ class Auto_contact(tk.Tk):
         )
         csv_data.to_csv("save_data.csv", index=False, encoding="SJIS")
         messagebox.showinfo("成功", "データ保存成功!")
+
+    def cleanup_on_exit(self):
+        """Clean up session when app is closing"""
+        if self.api_key:
+            try:
+                url = api_url + "api/logout"
+                data = {
+                    "api_key": self.api_key,
+                    "device_id": self.device_id
+                }
+                requests.post(url, data=data, timeout=5)
+                print("Session cleaned up on app close")
+            except Exception as e:
+                print(f"Error cleaning up session: {e}")
 
 
 class Register_api(tk.Frame):
@@ -579,15 +674,24 @@ class Register_api(tk.Frame):
     def register_api_key(self):
         url = api_url + "api/get_contact_data"
         apikey = self.api_text.get()
-        data = {"api_key": apikey, "version": version, "domain": "test"}
+        
+        data = {
+            "api_key": apikey, 
+            "version": version, 
+            "domain": "test",
+            "device_id": self.parent.device_id
+        }
 
         response = requests.get(url, params=data)
+        print("Response status code:", response.status_code)
+        print("Response JSON:", response.text)
         if response.status_code == 200:
             data = response.json()["message"]
             user_data = response.json()["user_data"]
             chat_api_key = response.json()["chat_api_key"]
             self.parent.user_data = json.loads(user_data)
             messagebox.showinfo("お知らせ", "APIキーが正確に登録されました。")
+            self.api_key = apikey  # Store for cleanup
             auto_contact.api_key = apikey
             auto_contact.api_key_txt.config(text="APIキー:" + apikey)
             auto_contact.chat_api_key = chat_api_key
@@ -598,6 +702,8 @@ class Register_api(tk.Frame):
             self.close_frame()
 
         elif response.status_code == 401:
+            messagebox.showerror("お知らせ", response.json()["message"])
+        elif response.status_code == 429:
             messagebox.showerror("お知らせ", response.json()["message"])
         elif response.status_code == 505:
             messagebox.showerror("お知らせ", response.json()["message"])
@@ -796,11 +902,9 @@ class List_item(tk.Frame):
             result = "自動送信【失敗】"
             contact_finder = find_contact.FindContact()
             contact_page_url = contact_finder.find_contact_page_url(self.data.iloc[2])
-            # print(contact_page_url)
             contact_form = {}
             if contact_page_url != False:
                 contact_form = contact_finder.find_contact_form(contact_page_url)
-            # print(contact_form)
             if contact_form != {}:
                 send_process = send_contact.SendContact()
                 send_data = send_process.send_data(
@@ -810,23 +914,31 @@ class List_item(tk.Frame):
                     result = "自動送信【成功】"
             else:
                 result = "フォーム未発見"
+        
+        # Update progress and current list display
         auto_contact.url_count -= 1
+        current_progress = auto_contact.total_url_cnt - auto_contact.url_count
+        current_list_id = auto_contact.get_current_list_id(current_progress)
+        
+        # Update progress display
         update_progress(
-            auto_contact.total_url_cnt - auto_contact.url_count,
+            current_progress,
             auto_contact.total_url_cnt,
             auto_contact,
         )
+        
+        # Update current list display
+        auto_contact.after(0, lambda mid=current_list_id: auto_contact.current_list_txt.config(text=f"進行中リスト: {mid}"))
 
         if auto_contact.url_count < 1:
             auto_contact.process_btn.config(state=tk.DISABLED)
             auto_contact.save_btn.config(state=tk.DISABLED)
-            # print("--------- end ---------")
 
         client_id = self.data.iloc[1]
         now_time = datetime.datetime.now()
 
         url = api_url + "api/send_result"
-        parts = profile_data["お問い合わせ詳細"].splitlines()  # Split string into lines.....
+        parts = profile_data["お問い合わせ詳細"].splitlines()
         encoded_parts = []
 
         for part in parts:
@@ -837,7 +949,6 @@ class List_item(tk.Frame):
             else:
                 encoded_parts.append(part)
 
-        # Reconstruct the memo with preserved formatting
         memo = "\n".join(encoded_parts)
 
         send_data = {
@@ -847,7 +958,7 @@ class List_item(tk.Frame):
             "contact_url": contact_page_url,
             "now_time": now_time.strftime("%Y-%m-%d %H:%M:%S"),
             "memo": memo,
-            "file_id": auto_contact.mana_id,
+            "file_id": self.data.get('source_mana_id', auto_contact.mana_id),
         }
         req = {
             "api_key": auto_contact.api_key,
