@@ -649,17 +649,17 @@ class Register_api(tk.Frame):
             command=self.register_api_key,
             style="Custom.TButton",
         )
-        self.register_btn.grid(row=1, column=0)
+        self.register_btn.grid(row=2, column=0)
 
         self.api_text = tk.Entry(self.frame, font=("Yu Mincho", 12), width=28)
-        self.api_text.grid(row=1, column=1)
+        self.api_text.grid(row=1, column=0, columnspan=2)
         self.api_text.insert(0, "APIキーを貼り付けてください")
         self.api_text.focus()
 
         self.close_button = ttk.Button(
             self.frame, text="取消", command=self.close_frame, style="Custom.TButton"
         )
-        self.close_button.grid(row=2, column=0, columnspan=2)
+        self.close_button.grid(row=2, column=1)
         self.frame.protocol("WM_DELETE_WINDOW", self.close_frame)
 
         self.move_bar.bind("<ButtonPress-1>", self.on_drag_start)
@@ -763,17 +763,17 @@ class Register_mana(tk.Frame):
             command=self.register_mana_key,
             style="Custom.TButton",
         )
-        self.register_btn.grid(row=1, column=0)
+        self.register_btn.grid(row=2, column=0)
 
         self.mana_id = tk.Entry(self.frame, font=("Yu Mincho", 12), width=28)
-        self.mana_id.grid(row=1, column=1)
+        self.mana_id.grid(row=1, column=1, columnspan=2)
         self.mana_id.insert(0, "リストIDを貼り付けてください（複数はカンマ区切り）")
         self.mana_id.focus()
 
         self.close_button = ttk.Button(
             self.frame, text="取消", command=self.close_frame, style="Custom.TButton"
         )
-        self.close_button.grid(row=2, column=0, columnspan=2)
+        self.close_button.grid(row=2, column=1)
         self.frame.protocol("WM_DELETE_WINDOW", self.close_frame)
 
         self.move_bar.bind("<ButtonPress-1>", self.on_drag_start)
