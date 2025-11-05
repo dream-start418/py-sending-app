@@ -690,7 +690,7 @@ class Register_api(tk.Frame):
             user_data = response.json()["user_data"]
             chat_api_key = response.json()["chat_api_key"]
             self.parent.user_data = json.loads(user_data)
-            messagebox.showinfo("お知らせ", "APIキーが正確に登録されました。")
+            messagebox.showinfo("お知らせ", "APIキーが正確に登録されました。", parent=self.frame)
             self.api_key = apikey  # Store for cleanup
             auto_contact.api_key = apikey
             auto_contact.api_key_txt.config(text="APIキー:" + apikey)
@@ -702,16 +702,16 @@ class Register_api(tk.Frame):
             self.close_frame()
 
         elif response.status_code == 401:
-            messagebox.showerror("お知らせ", response.json()["message"])
+            messagebox.showerror("お知らせ", response.json()["message"], parent=self.frame)
         elif response.status_code == 429:
-            messagebox.showerror("お知らせ", response.json()["message"])
+            messagebox.showerror("お知らせ", response.json()["message"], parent=self.frame)
         elif response.status_code == 505:
-            messagebox.showerror("お知らせ", response.json()["message"])
+            messagebox.showerror("お知らせ", response.json()["message"], parent=self.frame)
             auto_contact.register_api_btn.config(state=tk.DISABLED)
             auto_contact.process_btn.config(state=tk.DISABLED)
             auto_contact.save_btn.config(state=tk.DISABLED)
         else:
-            messagebox.showerror("お知らせ", "サーバーから応答がありません。")
+            messagebox.showerror("お知らせ", "サーバーから応答がありません。", parent=self.frame)
 
     def on_drag_start(self, event):
         self.frame.startX = event.x
@@ -766,7 +766,7 @@ class Register_mana(tk.Frame):
         self.register_btn.grid(row=2, column=0)
 
         self.mana_id = tk.Entry(self.frame, font=("Yu Mincho", 12), width=28)
-        self.mana_id.grid(row=1, column=1, columnspan=2)
+        self.mana_id.grid(row=1, column=0, columnspan=2)
         self.mana_id.insert(0, "リストIDを貼り付けてください（複数はカンマ区切り）")
         self.mana_id.focus()
 
@@ -793,7 +793,7 @@ class Register_mana(tk.Frame):
         mana_id_list = [id.strip() for id in mana_id_input.split(',') if id.strip()]
         
         if not mana_id_list:
-            messagebox.showerror("エラー", "有効なリストIDを入力してください。")
+            messagebox.showerror("エラー", "有効なリストIDを入力してください。", parent=self.frame)
             return
             
         # Validate each mana_id
@@ -804,11 +804,11 @@ class Register_mana(tk.Frame):
             if response.status_code == 200:
                 valid_mana_ids.append(mana_id)
             else:
-                messagebox.showerror("エラー", f"リストID '{mana_id}' が無効です: {response.json().get('message', 'Unknown error')}")
+                messagebox.showerror("エラー", f"リストID '{mana_id}' が無効です: {response.json().get('message', 'Unknown error')}", parent=self.frame)
                 return
         
         if valid_mana_ids:
-            messagebox.showinfo("お知らせ", f"{len(valid_mana_ids)}個のリストIDが正確に登録されました。")
+            messagebox.showinfo("お知らせ", f"{len(valid_mana_ids)}個のリストIDが正確に登録されました。", parent=self.frame)
             auto_contact.mana_id_list = valid_mana_ids
             auto_contact.current_mana_index = 0
             auto_contact.mana_id_txt.config(text=f"リストID: {', '.join(valid_mana_ids)}")
@@ -820,7 +820,7 @@ class Register_mana(tk.Frame):
         self.frame.startX = event.x
         self.frame.startY = event.y
 
-    def on_drag_motion(self, event):
+    def on_drag_motion(self, event):                                                                          
         deltax = event.x - self.frame.startX
         deltay = event.y - self.frame.startY
         x = self.frame.winfo_x() + deltax
