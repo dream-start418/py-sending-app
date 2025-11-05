@@ -93,8 +93,8 @@ class Auto_contact(tk.Tk):
         self.is_paused = False  # Flag to track pause state
         
         # Set window size and padding
-        self.geometry("570x600")
-        self.configure(padx=20, pady=20)
+        self.geometry("570x500")
+        self.configure(padx=30, pady=20)
         icon_path = resource_path("icon1.ico")
         self.iconbitmap(icon_path)
         self.save_data = []
@@ -174,7 +174,7 @@ class Auto_contact(tk.Tk):
         self.api_key_txt = tk.Label(
             self, text="APIキー:", justify="right", anchor="nw", font=("Yu Mincho", 10)
         )
-        self.api_key_txt.grid(row=0, column=1, sticky="nw", columnspan=3) 
+        self.api_key_txt.grid(row=0, column=1, sticky="nw", columnspan=4) 
 
         self.register_mana_btn = ttk.Button(
             self,
@@ -188,12 +188,12 @@ class Auto_contact(tk.Tk):
         self.mana_id_txt = tk.Label(
             self, text="リストID:", justify="right", anchor="nw", font=("Yu Mincho", 10)
         )
-        self.mana_id_txt.grid(row=1, column=1, sticky="nw", columnspan=3) 
+        self.mana_id_txt.grid(row=1, column=1, sticky="nw", columnspan=4) 
 
         # Single button for 顧客データ取得, 開始, 停止, 再開
         self.process_btn = ttk.Button(
             self,
-            text="顧客データ取得",
+            text="開始",
             command=self.toggle_process,
             style="Custom.TButton",
             state=tk.DISABLED  # Initially disabled
@@ -204,7 +204,7 @@ class Auto_contact(tk.Tk):
         self.current_list_txt = tk.Label(
             self, text="進行中リスト：", justify="left", anchor="nw", font=("Yu Mincho", 10)
         )
-        self.current_list_txt.grid(row=2, column=1, sticky="nw", columnspan=3)
+        self.current_list_txt.grid(row=2, column=1, sticky="nw", columnspan=4)
 
         # Create StringVar objects
         self.current_value_var = tk.StringVar(self)
@@ -222,7 +222,7 @@ class Auto_contact(tk.Tk):
         self.progress = Progressbar(
             self, orient=tk.HORIZONTAL, length=500, mode="determinate"
         )
-        self.progress.grid(row=4, column=0, columnspan=5)
+        self.progress.grid(row=4, column=0, columnspan=6)
 
         # Create the frame group for the third row
         self.list_frame = tk.Frame(self)
@@ -283,7 +283,7 @@ class Auto_contact(tk.Tk):
         self.save_btn = ttk.Button(
             self, text="閉じる", command=self.quit_action, style="Custom.TButton"
         )
-        self.save_btn.grid(row=6, column=3)
+        self.save_btn.grid(row=6, column=5)
 
         self.device_id = str(uuid.uuid4())
         self.api_key = None
@@ -511,7 +511,7 @@ class Auto_contact(tk.Tk):
             self.process_btn.config(text="停止")
             self.is_processing = True
             self.is_paused = False
-            self.alarmtxt.place(relx=0.05, rely=0.8)
+            self.alarmtxt.place(relx=0.05, rely=0.65)
             self.start_thread = threading.Thread(target=self.start_process)
             self.start_thread.start()
             self.save_btn.configure(state=tk.DISABLED)
@@ -569,7 +569,7 @@ class Auto_contact(tk.Tk):
         """Finish processing all lists - called from main thread"""
         self.is_processing = False
         self.is_paused = False
-        self.process_btn.config(text="顧客データ取得")
+        self.process_btn.config(text="開始")
         self.process_btn.config(state=tk.DISABLED)
         self.save_btn.config(state=tk.NORMAL)
         self.current_list_txt.config(text="進行中リスト：完了")
@@ -587,7 +587,7 @@ class Auto_contact(tk.Tk):
             if item.state_txt.cget("text") == "進行中":
                 item.state_txt.config(text="停止")
 
-        self.process_btn.config(text="顧客データ取得")
+        self.process_btn.config(text="開始")
         self.process_btn.config(state=tk.NORMAL)
         self.save_btn.config(state=tk.NORMAL)
 
