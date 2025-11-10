@@ -60,10 +60,14 @@ def resource_path(relative_path):
 
 
 def update_progress(current_value, total_value, auto_cotact):
-    auto_contact.total_value_var.set(f"登録数: {total_value}")
-    auto_contact.current_value_var.set(f"進行数: {current_value}")
-    auto_contact.progress["value"] = (current_value / total_value) * 100
-    auto_contact.update_idletasks()
+    try:
+        auto_contact.total_value_var.set(f"登録数: {total_value}")
+        auto_contact.current_value_var.set(f"進行数: {current_value}")
+        auto_contact.progress["value"] = (current_value / total_value) * 100
+        auto_contact.update_idletasks()
+    except (RuntimeError, tk.TclError):
+        # Main loop is no longer running, app is closing
+        pass
 
 
 class Auto_contact(tk.Tk):
@@ -287,6 +291,7 @@ class Auto_contact(tk.Tk):
 
         self.device_id = str(uuid.uuid4())
         self.api_key = None
+        self._cleanup_called = False 
         
         # Register cleanup function to run when app closes
         atexit.register(self.cleanup_on_exit)
@@ -553,7 +558,11 @@ class Auto_contact(tk.Tk):
                 # Calculate current progress and update display
                 current_progress = self.total_url_cnt - self.url_count
                 current_list_id = self.get_current_list_id(current_progress)
-                self.after(0, lambda mid=current_list_id: self.current_list_txt.config(text=f"進行中リスト: {mid}"))
+                try:
+                    self.after(0, lambda mid=current_list_id: self.current_list_txt.config(text=f"進行中リスト: {mid}"))
+                except RuntimeError:
+                    # Main loop is no longer running, app is closing
+                    return
                 
                 thread = threading.Thread(target=item.process)
                 thread.start()
@@ -564,7 +573,11 @@ class Auto_contact(tk.Tk):
             thread.join()
             
         # All processing completed
-        self.after(100, self.finish_processing)
+        try:
+            self.after(100, self.finish_processing)
+        except RuntimeError:
+            # Main loop is no longer running, app is closing
+            pass
 
     def finish_processing(self):
         """Finish processing all lists - called from main thread"""
@@ -601,15 +614,24 @@ class Auto_contact(tk.Tk):
 
     def cleanup_on_exit(self):
         """Clean up session when app is closing"""
+        if self._cleanup_called:  # Prevent double execution
+            return
+        self._cleanup_called = True
+
         if self.api_key:
             try:
-                url = api_url + "api/logout"
+                url = api_url + "api/logout_session"
                 data = {
                     "api_key": self.api_key,
                     "device_id": self.device_id
                 }
-                requests.post(url, data=data, timeout=5)
-                print("Session cleaned up on app close")
+                print("device_id: ", self.device_id)
+                print("api_key: ", self.api_key)
+                response = requests.post(url, data=data, timeout=5)
+                if response.status_code == 200:
+                    print("Session cleaned up on app close")
+                else:
+                    print(f"Logout failed: {response.status_code} - {response.text}")
             except Exception as e:
                 print(f"Error cleaning up session: {e}")
 
@@ -894,7 +916,11 @@ class List_item(tk.Frame):
         }
         response = requests.get(url, params=req)
         if "type" in response.json() and response.json()["type"] == "CantUseApiKey":
-            self.state_txt.config(text="失敗")
+            try:
+                self.state_txt.config(text="失敗")
+            except (RuntimeError, tk.TclError):
+                # Main loop is no longer running, app is closing
+                pass
             self.error_array.append({"field": "API", "msg": "No found APIKey"})
             result = "自動送信【失敗】"
         elif "type" in response.json() and response.json()["type"] == "noForm":
@@ -929,11 +955,19 @@ class List_item(tk.Frame):
         )
         
         # Update current list display
-        auto_contact.after(0, lambda mid=current_list_id: auto_contact.current_list_txt.config(text=f"進行中リスト: {mid}"))
+        try:
+            auto_contact.after(0, lambda mid=current_list_id: auto_contact.current_list_txt.config(text=f"進行中リスト: {mid}"))
+        except RuntimeError:
+            # Main loop is no longer running, app is closing
+            pass
 
         if auto_contact.url_count < 1:
-            auto_contact.process_btn.config(state=tk.DISABLED)
-            auto_contact.save_btn.config(state=tk.DISABLED)
+            try:
+                auto_contact.process_btn.config(state=tk.DISABLED)
+                auto_contact.save_btn.config(state=tk.DISABLED)
+            except (RuntimeError, tk.TclError):
+                # Main loop is no longer running, app is closing
+                pass
 
         client_id = self.data.iloc[1]
         now_time = datetime.datetime.now()
