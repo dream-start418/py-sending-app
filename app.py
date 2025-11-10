@@ -313,6 +313,7 @@ class Auto_contact(tk.Tk):
             """
             messagebox.showinfo("警告", show_msg)
             return
+        self.cleanup_on_exit()
         self.quit()
 
     def fetch_all_lists_data(self):
@@ -484,7 +485,7 @@ class Auto_contact(tk.Tk):
                 return
                 
         url = api_url + "api/get_contact_data"
-        data = {"api_key": self.api_key, "domain": "test", "mana_id": self.mana_id_list[0]}  # Use first list for contact data
+        data = {"api_key": self.api_key, "domain": "test", "mana_id": self.mana_id_list[0], "device_id": self.device_id}  # Use first list for contact data
         plan_type = ""
         response = requests.get(url, params=data)
         if response.status_code == 200:
@@ -966,6 +967,7 @@ class List_item(tk.Frame):
         }
         response = requests.get(url, params=req)
         if auto_contact.url_count == 0:
+            auto_contact.cleanup_on_exit()
             auto_contact.quit()
 
     def start_process(self):
