@@ -26,7 +26,7 @@ import find_contact
 import send_contact
 
 api_url = "https://autofill.robosell.jp/"
-version = 4.14
+version = 4.18
 
 
 def set_regidit_key(value):
@@ -63,7 +63,12 @@ def update_progress(current_value, total_value, auto_cotact):
     try:
         auto_contact.total_value_var.set(f"登録数: {total_value}")
         auto_contact.current_value_var.set(f"進行数: {current_value}")
-        auto_contact.progress["value"] = (current_value / total_value) * 100
+        if total_value > 0:
+            # Ensure progress doesn't exceed 100% and handle edge cases
+            progress_percent = min(100.0, max(0.0, (current_value / total_value) * 100))
+            auto_contact.progress["value"] = progress_percent
+        else:
+            auto_contact.progress["value"] = 0
         auto_contact.update_idletasks()
     except (RuntimeError, tk.TclError):
         # Main loop is no longer running, app is closing
@@ -99,8 +104,14 @@ class Auto_contact(tk.Tk):
         # Set window size and padding
         self.geometry("570x500")
         self.configure(padx=30, pady=20)
-        icon_path = resource_path("icon1.ico")
-        self.iconbitmap(icon_path)
+        # Set icon if available
+        try:
+            icon_path = resource_path("icon1.ico")
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
+        except (tk.TclError, FileNotFoundError, Exception):
+            # Icon not found or invalid, continue without icon
+            pass
         self.save_data = []
         self.url_count = 0
         self.total_url_cnt = 0
@@ -581,12 +592,30 @@ class Auto_contact(tk.Tk):
 
     def finish_processing(self):
         """Finish processing all lists - called from main thread"""
+        # Ensure progress reaches 100%
+        update_progress(self.total_url_cnt, self.total_url_cnt, self)
+        
         self.is_processing = False
         self.is_paused = False
         self.process_btn.config(text="開始")
         self.process_btn.config(state=tk.DISABLED)
         self.save_btn.config(state=tk.NORMAL)
         self.current_list_txt.config(text="進行中リスト：完了")
+        
+        # Ensure url_count reflects completion (handle any race conditions)
+        # Since finish_processing is only called after all threads complete,
+        # url_count should be 0 or less at this point
+        self.url_count = 0
+        
+        # Quit after all processing is complete
+        # All threads have completed (due to thread.join() in start_process)
+        # Add a small delay to ensure UI updates are complete before quitting
+        self.after(1000, self.quit_after_completion)
+    
+    def quit_after_completion(self):
+        """Quit the application after processing is complete"""
+        self.cleanup_on_exit()
+        self.quit()
 
     def stop_work(self, event=None):
         self.stop_thread = threading.Thread(target=self.stop_process)
@@ -947,12 +976,12 @@ class List_item(tk.Frame):
         current_progress = auto_contact.total_url_cnt - auto_contact.url_count
         current_list_id = auto_contact.get_current_list_id(current_progress)
         
-        # Update progress display
-        update_progress(
-            current_progress,
-            auto_contact.total_url_cnt,
-            auto_contact,
-        )
+        # Update progress display (ensure thread-safe update)
+        try:
+            auto_contact.after(0, lambda cp=current_progress, tc=auto_contact.total_url_cnt: update_progress(cp, tc, auto_contact))
+        except RuntimeError:
+            # Main loop is no longer running, app is closing
+            pass
         
         # Update current list display
         try:
@@ -1000,9 +1029,7 @@ class List_item(tk.Frame):
             "data": json.dumps(send_data).replace("'", '"'),
         }
         response = requests.get(url, params=req)
-        if auto_contact.url_count == 0:
-            auto_contact.cleanup_on_exit()
-            auto_contact.quit()
+        # Don't quit here - let finish_processing() handle it after all threads complete
 
     def start_process(self):
         self.service = ChromeService(executable_path=ChromeDriverManager().install())

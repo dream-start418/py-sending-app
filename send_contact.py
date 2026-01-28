@@ -448,10 +448,10 @@ class SendContact:
                                     self.select_option_in_form(target_form, profile_data['都道府県'])
                                     self.wait_and_fill_textarea(target_form, profile_data['お問い合わせ詳細'])
                                     self.select_check_radio_in_form(target_form)  
-                                    if content == '2次確認ボタンの出現':
-                                        send_result = self.click_submit_button_recheck(target_form, check_name, check_type, url)
-                                    else:
-                                        send_result = self.click_submit_button_first_check(target_form, check_name, check_type, url)     
+                                    # if content == '2次確認ボタンの出現':
+                                    #     send_result = self.click_submit_button_recheck(target_form, check_name, check_type, url)
+                                    # else:
+                                    send_result = self.click_submit_button_first_check(target_form, check_name, check_type, url)     
                         except Exception as api_error:
                             self.logger.error(f"API call failed: {api_error}")
 
